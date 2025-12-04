@@ -46,6 +46,24 @@ private:
         }
     }
     
+    // Вспомогательная функция для проверки типов по умолчанию
+    template<size_t... Is>
+    void validateDefaultsImpl(std::index_sequence<Is...>) {
+        // Cоздаем временный tuple и проверяем каждый элемент
+        if constexpr (sizeof...(Args) > 0) {
+            ([&]() {
+                try {
+                    std::ignore = std::any_cast<
+                        typename std::tuple_element<Is, std::tuple<Args...>>::type
+                    >(defaults[Is].second);
+                } catch (const std::bad_any_cast&) {
+                    throw std::runtime_error("Default value type mismatch for parameter " + 
+                                            std::to_string(Is) + " (" + paramNames[Is] + ")");
+                }
+            }(), ...);
+        }
+    }
+    
     template<size_t... Is>
     std::any call(const std::vector<std::pair<std::string, std::any>>& args, std::index_sequence<Is...>) {
         // Проверяем, что все обязательные параметры переданы
@@ -63,12 +81,13 @@ private:
         // Инициализируем значениями по умолчанию (если они есть)
         if constexpr (sizeof...(Args) > 0) {
             if (!defaults.empty()) {
-                // Используем fold expression для инициализации всех параметров по умолчанию
-                ((std::get<Is>(tupleArgs) = 
-                    std::any_cast<typename std::tuple_element<Is, std::tuple<Args...>>::type>(
-                        defaults[Is].second
-                    )
-                ), ...);
+                // Инициализируем каждый параметр по умолчанию
+                ([&]() {
+                    std::get<Is>(tupleArgs) = 
+                        std::any_cast<typename std::tuple_element<Is, std::tuple<Args...>>::type>(
+                            defaults[Is].second
+                        );
+                }(), ...);
             }
         }
         
@@ -120,6 +139,13 @@ public:
         method = [m](T* obj, Args... args) { return (obj->*m)(args...); };
         
         initParamInfo();
+        
+        // Проверяем типы по умолчанию (если они есть)
+        if constexpr (sizeof...(Args) > 0) {
+            if (!defaults.empty()) {
+                validateDefaultsImpl(std::make_index_sequence<sizeof...(Args)>{});
+            }
+        }
     }
     
     // Конструктор для константных методов
@@ -134,6 +160,13 @@ public:
         method = [m](T* obj, Args... args) { return (obj->*m)(args...); };
         
         initParamInfo();
+        
+        // Проверяем типы по умолчанию (если они есть)
+        if constexpr (sizeof...(Args) > 0) {
+            if (!defaults.empty()) {
+                validateDefaultsImpl(std::make_index_sequence<sizeof...(Args)>{});
+            }
+        }
     }
     
     void initParamInfo() {
