@@ -33,29 +33,25 @@ private:
     std::vector<std::string> paramNames;
     std::vector<std::string> paramTypes;
     std::string returnTypeName;
-    bool hasDefaultsFlag;
     
     template<typename U>
     static std::string getTypeName() {
         return typeid(U).name();
     }
     
-    void initTypesImpl() {}
-    
-    template<typename First, typename... Rest>
-    void initTypesImpl() {
-        paramTypes.push_back(getTypeName<First>());
-        if constexpr (sizeof...(Rest) > 0) {
-            initTypesImpl<Rest...>();
+    void initTypes() {
+        if constexpr (sizeof...(Args) > 0) {
+            // Используем fold expression для добавления всех типов
+            (paramTypes.push_back(getTypeName<Args>()), ...);
         }
     }
-
+    
     template<size_t... Is>
     std::any call(const std::vector<std::pair<std::string, std::any>>& args, std::index_sequence<Is...>) {
         // Проверяем, что все обязательные параметры переданы
         if (args.size() < paramNames.size()) {
             // Если нет defaults, все параметры обязательны
-            if (!hasDefaultsFlag) {
+            if (defaults.empty()) {
                 for (size_t i = args.size(); i < paramNames.size(); ++i) {
                     throw std::runtime_error("Missing required argument: " + paramNames[i]);
                 }
@@ -66,39 +62,20 @@ private:
         
         // Инициализируем значениями по умолчанию (если они есть)
         if constexpr (sizeof...(Args) > 0) {
-            if (hasDefaultsFlag) {
-                initDefaults(tupleArgs, std::make_index_sequence<sizeof...(Args)>{});
+            if (!defaults.empty()) {
+                // Используем fold expression для инициализации всех параметров по умолчанию
+                ((std::get<Is>(tupleArgs) = 
+                    std::any_cast<typename std::tuple_element<Is, std::tuple<Args...>>::type>(
+                        defaults[Is].second
+                    )
+                ), ...);
             }
         }
         
         // Заполняем переданными значениями
-        fillArgs(tupleArgs, args, std::make_index_sequence<sizeof...(Args)>{});
+        ((fillArg<Is>(tupleArgs, args)), ...);
         
         return method(object, std::get<Is>(tupleArgs)...);
-    }
-    
-    template<typename Tuple, size_t... Is>
-    void initDefaults(Tuple& tuple, std::index_sequence<Is...>) {
-        (initDefault<Is>(tuple), ...);
-    }
-    
-    template<size_t I, typename Tuple>
-    void initDefault(Tuple& tuple) {
-        if (I < defaults.size()) {
-            try {
-                std::get<I>(tuple) = std::any_cast<typename std::tuple_element<I, std::tuple<Args...>>::type>(
-                    defaults[I].second
-                );
-            } catch (const std::bad_any_cast&) {
-                throw std::runtime_error("Default value type mismatch for parameter " + 
-                                        std::to_string(I) + " (" + paramNames[I] + ")");
-            }
-        }
-    }
-    
-    template<typename Tuple, size_t... Is>
-    void fillArgs(Tuple& tuple, const std::vector<std::pair<std::string, std::any>>& args, std::index_sequence<Is...>) {
-        (fillArg<Is>(tuple, args), ...);
     }
     
     template<size_t I, typename Tuple>
@@ -125,7 +102,7 @@ private:
         }
         
         // Если аргумент не передан и нет значения по умолчанию
-        if (!hasDefaultsFlag) {
+        if (defaults.empty()) {
             throw std::runtime_error("Argument not provided and no default value: " + paramName);
         }
     }
@@ -134,7 +111,7 @@ public:
     // Конструктор для неконстантных методов
     Wrapper(T* obj, ReturnType (T::*m)(Args...), 
            const std::vector<std::pair<std::string, std::any>>& defaults_vec = {})
-        : object(obj), defaults(defaults_vec), hasDefaultsFlag(!defaults_vec.empty()) {
+        : object(obj), defaults(defaults_vec) {
         
         if (!object) {
             throw std::runtime_error("Wrapper: object pointer cannot be null");
@@ -148,7 +125,7 @@ public:
     // Конструктор для константных методов
     Wrapper(T* obj, ReturnType (T::*m)(Args...) const, 
            const std::vector<std::pair<std::string, std::any>>& defaults_vec = {})
-        : object(obj), defaults(defaults_vec), hasDefaultsFlag(!defaults_vec.empty()) {
+        : object(obj), defaults(defaults_vec) {
         
         if (!object) {
             throw std::runtime_error("Wrapper: object pointer cannot be null");
@@ -166,7 +143,7 @@ public:
         // Определяем количество параметров метода
         constexpr size_t paramCount = sizeof...(Args);
         
-        if (hasDefaultsFlag) {
+        if (!defaults.empty()) {
             // Если предоставлены defaults, используем имена из них
             for (const auto& def : defaults) {
                 paramNames.push_back(def.first);
@@ -184,12 +161,9 @@ public:
                 paramNames.push_back("param" + std::to_string(i + 1));
             }
         }
-        // Если paramCount == 0, paramNames останется пустым
         
         // Инициализируем информацию о типах
-        if constexpr (paramCount > 0) {
-            initTypesImpl<Args...>();
-        }
+        initTypes();
         
         returnTypeName = getTypeName<ReturnType>();
     }
@@ -221,10 +195,6 @@ public:
     
     std::string getReturnType() const override {
         return returnTypeName;
-    }
-    
-    bool hasDefaultValues() const {
-        return hasDefaultsFlag;
     }
 };
 
