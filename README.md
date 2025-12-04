@@ -16,9 +16,9 @@ std::cout << engine.execute("command1", {{"arg1", 4}, {"arg2", 5}}) << std::endl
 ## Архитектура проекта
 ```
 engine_wrapper/
-├── command_test.exe                 // Исполняемый файл тестов
+├── command_test.exe                 // Исполняемый файл тестов (создается при сборке)
 ├── CMakeLists.txt                   // Файл сборки CMake
-├── command.h                        // Основной заголовочный файл (3 класса: Command, Wrapper, Engine)
+├── command.h                        // Основной заголовочный файл
 ├── main.cpp                         // Точка входа (запуск всех тестов)
 ├── test_class/
 │   └── subject.h                    // Тестовый класс с методами для демонстрации
@@ -70,7 +70,6 @@ engine_wrapper/
 - Использование `std::unique_ptr<Command>` для владения командами
 - Проверки на nullptr на всех уровнях
 - Автоматическая очистка ресурсов
-- Защита от double-free
 
 ### 2. Типобезопасность
 - Проверка типов аргументов при выполнении
@@ -115,7 +114,7 @@ cmake --build build
 ## Unit-тесты (20 тестов)
 
 ### Базовые тесты
-1. **test1_basic_functionality** - Базовая функциональность (умножение)
+1. **test1_basic_functionality** - Базовая функциональность
 2. **test2_default_values** - Значения параметров по умолчанию
 3. **test3_type_safety** - Проверка типобезопасности
 4. **test4_memory_management** - Управление памятью с unique_ptr
@@ -189,12 +188,6 @@ auto info = engine.getCommandInfo("multiply");
 std::cout << "Return type: " << info.returnType << std::endl;
 std::cout << "Parameters: " << info.paramNames.size() << std::endl;
 ```
-
-## Ограничения и особенности
-- Поддерживаются только методы классов (не свободные функции)
-- Все проверки типов выполняются в runtime
-- Имена типов выводятся в mangled формате
-- Для каждого типа метода требуется свой конструктор Wrapper
 
 ## Требования
 - C++17 или выше
