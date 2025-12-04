@@ -33,6 +33,7 @@ private:
     std::vector<std::string> paramNames;
     std::vector<std::string> paramTypes;
     std::string returnTypeName;
+    bool hasDefaultsFlag;
     
     template<typename U>
     static std::string getTypeName() {
@@ -53,15 +54,9 @@ private:
     std::any call(const std::vector<std::pair<std::string, std::any>>& args, std::index_sequence<Is...>) {
         // Проверяем, что все обязательные параметры переданы
         if (args.size() < paramNames.size()) {
-            for (size_t i = args.size(); i < paramNames.size(); ++i) {
-                bool hasDefault = false;
-                for (const auto& def : defaults) {
-                    if (def.first == paramNames[i]) {
-                        hasDefault = true;
-                        break;
-                    }
-                }
-                if (!hasDefault) {
+            // Если нет defaults, все параметры обязательны
+            if (!hasDefaultsFlag) {
+                for (size_t i = args.size(); i < paramNames.size(); ++i) {
                     throw std::runtime_error("Missing required argument: " + paramNames[i]);
                 }
             }
@@ -69,9 +64,11 @@ private:
         
         std::tuple<Args...> tupleArgs;
         
-        // Инициализируем значениями по умолчанию
+        // Инициализируем значениями по умолчанию (если они есть)
         if constexpr (sizeof...(Args) > 0) {
-            initDefaults(tupleArgs, std::make_index_sequence<sizeof...(Args)>{});
+            if (hasDefaultsFlag) {
+                initDefaults(tupleArgs, std::make_index_sequence<sizeof...(Args)>{});
+            }
         }
         
         // Заполняем переданными значениями
@@ -126,13 +123,18 @@ private:
                 return;
             }
         }
+        
+        // Если аргумент не передан и нет значения по умолчанию
+        if (!hasDefaultsFlag) {
+            throw std::runtime_error("Argument not provided and no default value: " + paramName);
+        }
     }
 
 public:
     // Конструктор для неконстантных методов
     Wrapper(T* obj, ReturnType (T::*m)(Args...), 
            const std::vector<std::pair<std::string, std::any>>& defaults_vec = {})
-        : object(obj), defaults(defaults_vec) {
+        : object(obj), defaults(defaults_vec), hasDefaultsFlag(!defaults_vec.empty()) {
         
         if (!object) {
             throw std::runtime_error("Wrapper: object pointer cannot be null");
@@ -146,7 +148,7 @@ public:
     // Конструктор для константных методов
     Wrapper(T* obj, ReturnType (T::*m)(Args...) const, 
            const std::vector<std::pair<std::string, std::any>>& defaults_vec = {})
-        : object(obj), defaults(defaults_vec) {
+        : object(obj), defaults(defaults_vec), hasDefaultsFlag(!defaults_vec.empty()) {
         
         if (!object) {
             throw std::runtime_error("Wrapper: object pointer cannot be null");
@@ -161,29 +163,35 @@ public:
         paramNames.clear();
         paramTypes.clear();
         
-        // Если defaults не предоставлены, генерируем имена по умолчанию
-        if (defaults.empty() && sizeof...(Args) > 0) {
-            for (size_t i = 0; i < sizeof...(Args); ++i) {
-                paramNames.push_back("param" + std::to_string(i + 1));
-            }
-        } else {
+        // Определяем количество параметров метода
+        constexpr size_t paramCount = sizeof...(Args);
+        
+        if (hasDefaultsFlag) {
+            // Если предоставлены defaults, используем имена из них
             for (const auto& def : defaults) {
                 paramNames.push_back(def.first);
             }
+            
+            // Проверяем соответствие количества параметров
+            if (defaults.size() != paramCount) {
+                throw std::runtime_error("Parameter count mismatch in Wrapper constructor. "
+                                       "Defaults should contain all " + std::to_string(paramCount) + 
+                                       " parameters or be empty.");
+            }
+        } else if (paramCount > 0) {
+            // Если defaults не предоставлены, но есть параметры, генерируем имена по умолчанию
+            for (size_t i = 0; i < paramCount; ++i) {
+                paramNames.push_back("param" + std::to_string(i + 1));
+            }
         }
+        // Если paramCount == 0, paramNames останется пустым
         
-        if constexpr (sizeof...(Args) > 0) {
+        // Инициализируем информацию о типах
+        if constexpr (paramCount > 0) {
             initTypesImpl<Args...>();
         }
         
         returnTypeName = getTypeName<ReturnType>();
-        
-        // Defaults должны быть либо пустыми, либо содержать все параметры
-        if (!defaults.empty() && defaults.size() != sizeof...(Args)) {
-            throw std::runtime_error("Parameter count mismatch in Wrapper constructor. "
-                                   "Defaults should contain all " + std::to_string(sizeof...(Args)) + 
-                                   " parameters or be empty.");
-        }
     }
 
     std::any execute(const std::vector<std::pair<std::string, std::any>>& args) override {
@@ -213,6 +221,10 @@ public:
     
     std::string getReturnType() const override {
         return returnTypeName;
+    }
+    
+    bool hasDefaultValues() const {
+        return hasDefaultsFlag;
     }
 };
 
