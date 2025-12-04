@@ -2,18 +2,7 @@
 
 Проект реализует систему инкапсуляции методов класса произвольной сигнатуры с возможностью регистрации и выполнения команд через единый интерфейс. Система предоставляет типизированный доступ к методам объектов, поддерживает значения по умолчанию для параметров, проверку типов и безопасное управление памятью.
 
-## Пример использования
-```cpp
-Subject subj;
-Wrapper<Subject, int, int, int> wrapper(&subj, &Subject::f3, {{"arg1", 0}, {"arg2", 0}});
-
-Engine engine;
-engine.register_command(&wrapper, "command1");
-
-std::cout << engine.execute("command1", {{"arg1", 4}, {"arg2", 5}}) << std::endl;
-```
-
-## Архитектура проекта
+## Структура проекта
 ```
 engine_wrapper/
 ├── command_test.exe                 // Исполняемый файл тестов (создается при сборке)
@@ -27,6 +16,28 @@ engine_wrapper/
 │   └── test.cpp                     // Реализация всех unit-тестов (20 тестов)
 └── README.md
 ```
+
+## Сборка проекта
+
+### Через CMake:
+```bash
+# Конфигурация
+cmake -B build
+
+# Сборка
+cmake --build build
+```
+
+### Через VS Code:
+- Ctrl+Shift+P → CMake: Configure
+- Ctrl+Shift+P → CMake: Build
+
+## Запуск тестов
+После сборки проекта:
+```bash
+./command_test.exe
+```
+
 
 ## Основные компоненты
 
@@ -90,26 +101,6 @@ engine_wrapper/
   - Несуществующих командах
   - Дублировании имен команд при регистрации
 
-## Сборка проекта
-
-### Через CMake:
-```bash
-# Конфигурация
-cmake -B build
-
-# Сборка
-cmake --build build
-```
-
-### Через VS Code:
-- Ctrl+Shift+P → CMake: Configure
-- Ctrl+Shift+P → CMake: Build
-
-## Запуск тестов
-После сборки проекта:
-```bash
-./command_test.exe
-```
 
 ## Unit-тесты (20 тестов)
 
