@@ -1,10 +1,13 @@
 #include "test.h"
 #include "command.h"
+#include "wrapper.h"
+#include "engine.h"
 #include "subject.h"
 #include <iostream>
 #include <cassert>
 #include <vector>
 #include <string>
+
 
 void test1_basic_functionality() {
     std::cout << "Test 1: Basic functionality" << std::endl;

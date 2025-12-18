@@ -12,7 +12,7 @@ public:
     Subject() = default;
     explicit Subject(int val) : value(val) {}
     
-    // Неконстантные методы
+    // неконстантные методы
     int f3(int arg1, int arg2) {
         return arg1 * arg2;
     }
@@ -38,7 +38,7 @@ public:
         value = val;
     }
     
-    // Константные методы
+    // константные методы
     int getValue() const {
         return value;
     }

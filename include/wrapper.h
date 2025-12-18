@@ -1,35 +1,14 @@
-#ifndef COMMAND_H
-#define COMMAND_H
+#ifndef WRAPPER_H
+#define WRAPPER_H
 
-#include <vector>
-#include <string>
+#include "command.h"
 #include <functional>
-#include <any>
-#include <memory>
-#include <stdexcept>
 #include <type_traits>
 #include <iostream>
 #include <sstream>
 #include <utility>
 #include <map>
-
-// базовый интерфейс для всех команд
-class Command {
-public:
-    virtual ~Command() = default;
-    
-    // выполняет команду с заданными аргументами
-    virtual std::any execute(const std::vector<std::pair<std::string, std::any>>& args) = 0;
-    
-    // получает имена параметров команды
-    virtual std::vector<std::string> getParamNames() const = 0;
-    
-    // получает типы параметров команды
-    virtual std::vector<std::string> getParamTypes() const = 0;
-    
-    // получает тип возвращаемого значения
-    virtual std::string getReturnType() const = 0;
-};
+#include <tuple>
 
 // обертка для методов класса с произвольной сигнатурой
 template<typename T, typename ReturnType, typename... Args>
@@ -51,7 +30,6 @@ private:
     // инициализирует информацию о типах параметров
     void initTypes() {
         if constexpr (sizeof...(Args) > 0) {
-            // fold expression: обрабатывает все типы Args
             (paramTypes.push_back(getTypeName<Args>()), ...);
         }
     }
@@ -60,7 +38,6 @@ private:
     template<size_t... Is>
     void validateDefaultsImpl(std::index_sequence<Is...>) {
         if constexpr (sizeof...(Args) > 0) {
-            // проверяет каждый параметр с помощью fold expression
             ([&]() {
                 try {
                     // пытается преобразовать значение по умолчанию к нужному типу
@@ -147,13 +124,15 @@ public:
         
         if (!object) throw std::runtime_error("Wrapper: object pointer cannot be null");
         
-        // сохраняет метод в std::function
         method = [m](T* obj, Args... args) { return (obj->*m)(args...); };
         initParamInfo();
         
         // проверяет типы значений по умолчанию
-        if constexpr (sizeof...(Args) > 0 && !defaults.empty()) {
-            validateDefaultsImpl(std::make_index_sequence<sizeof...(Args)>{});
+        if constexpr (sizeof...(Args) > 0) {
+            // проверяем в runtime, есть ли значения по умолчанию
+            if (!defaults.empty()) {
+                validateDefaultsImpl(std::make_index_sequence<sizeof...(Args)>{});
+            }
         }
     }
     
@@ -167,8 +146,10 @@ public:
         method = [m](T* obj, Args... args) { return (obj->*m)(args...); };
         initParamInfo();
         
-        if constexpr (sizeof...(Args) > 0 && !defaults.empty()) {
-            validateDefaultsImpl(std::make_index_sequence<sizeof...(Args)>{});
+        if constexpr (sizeof...(Args) > 0) {
+            if (!defaults.empty()) {
+                validateDefaultsImpl(std::make_index_sequence<sizeof...(Args)>{});
+            }
         }
     }
     
@@ -185,7 +166,6 @@ public:
                 paramNames.push_back(def.first);
             }
             
-            // проверяет, что количество значений по умолчанию совпадает с количеством параметров
             if (defaults.size() != paramCount) {
                 throw std::runtime_error("Parameter count mismatch. Defaults should contain all " + 
                                        std::to_string(paramCount) + " parameters or be empty.");
@@ -220,125 +200,16 @@ public:
         }
     }
 
-    // получает имена параметров
     std::vector<std::string> getParamNames() const override {
         return paramNames;
     }
     
-    // получает типы параметров
     std::vector<std::string> getParamTypes() const override {
         return paramTypes;
     }
     
-    // получает тип возвращаемого значения
     std::string getReturnType() const override {
         return returnTypeName;
-    }
-};
-
-// движок для управления командами
-class Engine {
-private:
-    std::map<std::string, std::unique_ptr<Command>> commands;
-
-public:
-    // регистрирует команду
-    void register_command(std::unique_ptr<Command> command, const std::string& name) {
-        if (!command) throw std::runtime_error("Cannot register null command: " + name);
-        if (name.empty()) throw std::runtime_error("Cannot register command with empty name");
-        if (commands.find(name) != commands.end()) {
-            throw std::runtime_error("Command already registered: " + name);
-        }
-        commands[name] = std::move(command);
-    }
-
-    // выполняет команду
-    std::any execute(const std::string& commandName, 
-                    const std::vector<std::pair<std::string, std::any>>& args = {}) {
-        if (commandName.empty()) throw std::runtime_error("Command name cannot be empty");
-        
-        auto it = commands.find(commandName);
-        if (it == commands.end()) throw std::runtime_error("Command not found: " + commandName);
-        if (!it->second) throw std::runtime_error("Command is null: " + commandName);
-        
-        return it->second->execute(args);
-    }
-    
-    // выполняет команду с приведением результата к заданному типу
-    template<typename ResultType>
-    ResultType execute_as(const std::string& commandName, 
-                         const std::vector<std::pair<std::string, std::any>>& args = {}) {
-        std::any result = execute(commandName, args);
-        try {
-            // пытается привести результат
-            return std::any_cast<ResultType>(result);
-        } catch (const std::bad_any_cast&) {
-            auto it = commands.find(commandName);
-            std::string expectedType = typeid(ResultType).name();
-            std::string actualType = it->second->getReturnType();
-            
-            std::stringstream ss;
-            ss << "Type mismatch in command result. Expected: " 
-               << expectedType << ", Actual return type: " << actualType;
-            throw std::runtime_error(ss.str());
-        }
-    }
-    
-    // информация о команде
-    struct CommandInfo {
-        std::vector<std::string> paramNames;
-        std::vector<std::string> paramTypes;
-        std::string returnType;
-    };
-    
-    // получает информацию о команде
-    CommandInfo getCommandInfo(const std::string& commandName) const {
-        if (commandName.empty()) throw std::runtime_error("Command name cannot be empty");
-        
-        auto it = commands.find(commandName);
-        if (it == commands.end()) throw std::runtime_error("Command not found: " + commandName);
-        if (!it->second) throw std::runtime_error("Command is null: " + commandName);
-        
-        CommandInfo info;
-        info.paramNames = it->second->getParamNames();
-        info.paramTypes = it->second->getParamTypes();
-        info.returnType = it->second->getReturnType();
-        return info;
-    }
-    
-    // получает параметры команды
-    std::vector<std::string> getCommandParams(const std::string& commandName) const {
-        return getCommandInfo(commandName).paramNames;
-    }
-    
-    // проверяет существование команды
-    bool has_command(const std::string& commandName) const {
-        if (commandName.empty()) return false;
-        auto it = commands.find(commandName);
-        return it != commands.end() && it->second != nullptr;
-    }
-    
-    // очищает все команды
-    void clear() {
-        commands.clear();
-    }
-    
-    // получает список имен всех команд
-    std::vector<std::string> get_command_list() const {
-        std::vector<std::string> result;
-        for (const auto& pair : commands) {
-            if (pair.second) result.push_back(pair.first);
-        }
-        return result;
-    }
-    
-    // получает количество команд
-    size_t command_count() const {
-        size_t count = 0;
-        for (const auto& pair : commands) {
-            if (pair.second) ++count;
-        }
-        return count;
     }
 };
 
